@@ -82,6 +82,19 @@ DEFINE_MUTUALLY_EXCLUSIVE
 (* EXAMPLE: DEFINE_FUNCTION <RETURN_TYPE> <NAME> (<PARAMETERS>) *)
 (* EXAMPLE: DEFINE_CALL '<NAME>' (<PARAMETERS>) *)
 
+define_function UpdateFeedback() {
+    [dvTP, 201] = (iSelectedSwitchType == NAV_SWITCH_LEVEL_VID)
+    [dvTP, 202] = (iSelectedSwitchType == NAV_SWITCH_LEVEL_AUD)
+
+    {
+        stack_var integer x
+
+        for (x = 1; x <= MAX_IO; x++) {
+            [dvTP, x] = (iSelectedInput == x)
+            [dvTP, x + 20] = (iSelectedInput && (iOutput[iSelectedSwitchType][x] = iSelectedInput));
+        }
+    }
+}
 
 
 (***********************************************************)
@@ -93,18 +106,6 @@ DEFINE_START
 (*                THE EVENTS GO BELOW                      *)
 (***********************************************************)
 DEFINE_EVENT
-timeline_event[TL_NAV_FEEDBACK] {
-    [dvTP, 201] = (iSelectedSwitchType == NAV_SWITCH_LEVEL_VID)
-    [dvTP, 202] = (iSelectedSwitchType == NAV_SWITCH_LEVEL_AUD)
-
-    if (1) {
-    stack_var integer x
-    for (x = 1; x <= MAX_IO; x++) {
-        [dvTP, x] = (iSelectedInput == x)
-        [dvTP, x + 20] = (iSelectedInput && (iOutput[iSelectedSwitchType][x] = iSelectedInput));
-    }
-    }
-}
 
 button_event[dvTP, 1]
 button_event[dvTP, 2]
@@ -123,7 +124,8 @@ button_event[dvTP, 14]
 button_event[dvTP, 15]
 button_event[dvTP, 16] {
     push: {
-    iSelectedInput = button.input.channel
+        iSelectedInput = button.input.channel
+        UpdateFeedback()
     }
 }
 
@@ -145,32 +147,37 @@ button_event[dvTP, 34]
 button_event[dvTP, 35]
 button_event[dvTP, 36] {
     push: {
-    //NAVSwitch(vdvObject, iSelectedInput, button.input.channel - 20, iSelectedSwitchType)
-    send_level dvDevice[button.input.channel - 20], iSelectedSwitchType + 49, iSelectedInput
+        //NAVSwitch(vdvObject, iSelectedInput, button.input.channel - 20, iSelectedSwitchType)
+        send_level dvDevice[button.input.channel - 20], iSelectedSwitchType + 49, iSelectedInput
     }
 }
 
 
 button_event[dvTP, 201] {
     push: {
-    iSelectedSwitchType = NAV_SWITCH_LEVEL_VID
+        iSelectedSwitchType = NAV_SWITCH_LEVEL_VID
+        UpdateFeedback()
     }
 }
 
 button_event[dvTP, 202] {
     push: {
-    iSelectedSwitchType = NAV_SWITCH_LEVEL_AUD
+        iSelectedSwitchType = NAV_SWITCH_LEVEL_AUD
+        UpdateFeedback()
     }
 }
 
 
 level_event[dvDevice, 50] {
     iOutput[NAV_SWITCH_LEVEL_VID][get_last(dvDevice)] = level.value
+    UpdateFeedback()
 }
 
 level_event[dvDevice, 51] {
     iOutput[NAV_SWITCH_LEVEL_AUD][get_last(dvDevice)] = level.value
+    UpdateFeedback()
 }
+
 
 (***********************************************************)
 (*                     END OF PROGRAM                      *)

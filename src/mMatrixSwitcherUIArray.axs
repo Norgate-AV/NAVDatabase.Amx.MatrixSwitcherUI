@@ -110,38 +110,40 @@ DEFINE_MUTUALLY_EXCLUSIVE
 (***********************************************************)
 (* EXAMPLE: DEFINE_FUNCTION <RETURN_TYPE> <NAME> (<PARAMETERS>) *)
 (* EXAMPLE: DEFINE_CALL '<NAME>' (<PARAMETERS>) *)
+
 define_function EnableAudioIO(integer iState) {
     stack_var integer x
 
     for (x = 1; x <= MAX_IO; x++) {
-    if (iInputIsAudioSwicthingBoard[x]) {
-        NAVShowButtonArray(dvTP, BUTTON_INPUT[x], iState)
-    }
+        if (iInputIsAudioSwicthingBoard[x]) {
+            NAVShowButtonArray(dvTP, BUTTON_INPUT[x], iState)
+        }
 
-    if (iOutputIsAudioSwicthingBoard[x]) {
-        NAVShowButtonArray(dvTP, BUTTON_OUTPUT[x], iState)
-    }
+        if (iOutputIsAudioSwicthingBoard[x]) {
+            NAVShowButtonArray(dvTP, BUTTON_OUTPUT[x], iState)
+        }
     }
 }
 
 
 define_function SelectLevel(integer iLevel) {
     iSelectedLevel = iLevel
-
+    UpdateFeedback()
     EnableAudioIO(iSelectedLevel == NAV_SWITCH_LEVEL_AUD)
 }
 
 
 define_function SelectInput(integer iInput) {
     iSelectedInput = iInput
+    UpdateFeedback()
 }
 
 
 define_function SelectOutput(integer iOutput) {
     if (iCurrentInput[iSelectedLevel][iOutput] != iSelectedInput) {
-    NAVSwitch(vdvObject, iSelectedInput, iOutput, iSelectedLevel)
+        NAVSwitch(vdvObject, iSelectedInput, iOutput, iSelectedLevel)
     } else {
-    NAVSwitch(vdvObject, 0, iOutput, iSelectedLevel)
+        NAVSwitch(vdvObject, 0, iOutput, iSelectedLevel)
     }
 }
 
@@ -150,19 +152,33 @@ define_function SendLabels() {
     stack_var integer x
 
     for (x = 1; x <= MAX_IO; x++) {
-    if (length_array(cInputLabel[x])) {
-        NAVTextArray(dvTP, BUTTON_INPUT[x], '0', cInputLabel[x])
+        if (length_array(cInputLabel[x])) {
+            NAVTextArray(dvTP, BUTTON_INPUT[x], '0', cInputLabel[x])
+        }
+        else {
+            NAVTextArray(dvTP, BUTTON_INPUT[x], '0', "'Input ', itoa(x)")
+        }
+
+        if (length_array(cOutputLabel[x])) {
+            NAVTextArray(dvTP, BUTTON_OUTPUT[x], '0', cOutputLabel[x])
+        }
+        else {
+            NAVTextArray(dvTP, BUTTON_OUTPUT[x], '0', "'Output ', itoa(x)")
+        }
     }
-    else {
-        NAVTextArray(dvTP, BUTTON_INPUT[x], '0', "'Input ', itoa(x)")
+}
+
+
+define_function UpdateFeedback() {
+    stack_var integer x
+
+    for (x = 1; x <= MAX_LEVEL; x++) {
+        [dvTP, BUTTON_LEVEL[x]] = (iSelectedLevel == x)
     }
 
-    if (length_array(cOutputLabel[x])) {
-        NAVTextArray(dvTP, BUTTON_OUTPUT[x], '0', cOutputLabel[x])
-    }
-    else {
-        NAVTextArray(dvTP, BUTTON_OUTPUT[x], '0', "'Output ', itoa(x)")
-    }
+    for (x = 1; x <= MAX_IO; x++) {
+        [dvTP, BUTTON_INPUT[x]] = (iSelectedInput == x)
+        [dvTP, BUTTON_OUTPUT[x]] = (iSelectedInput && iSelectedLevel && (iCurrentInput[iSelectedLevel][x] = iSelectedInput));
     }
 }
 
@@ -178,139 +194,128 @@ DEFINE_START {
 (*                THE EVENTS GO BELOW                      *)
 (***********************************************************)
 DEFINE_EVENT
-timeline_event[TL_NAV_FEEDBACK] {
-    stack_var integer x
-    for (x = 1; x <= MAX_LEVEL; x++) {
-    [dvTP, BUTTON_LEVEL[x]] = (iSelectedLevel == x)
-    }
-
-    for (x = 1; x <= MAX_IO; x++) {
-    [dvTP, BUTTON_INPUT[x]] = (iSelectedInput == x)
-    [dvTP, BUTTON_OUTPUT[x]] = (iSelectedInput && iSelectedLevel && (iCurrentInput[iSelectedLevel][x] = iSelectedInput));
-    }
-}
 
 button_event[dvTP, BUTTON_INPUT] {
     push: {
-    stack_var integer iInput
+        stack_var integer iInput
 
-    iInput = get_last(BUTTON_INPUT)
+        iInput = get_last(BUTTON_INPUT)
 
-    SelectInput(iInput)
+        SelectInput(iInput)
     }
 }
 
+
 button_event[dvTP, BUTTON_OUTPUT] {
     push: {
-    stack_var integer iOutput
+        stack_var integer iOutput
 
-    iOutput = get_last(BUTTON_OUTPUT)
+        iOutput = get_last(BUTTON_OUTPUT)
 
-    SelectOutput(iOutput)
+        SelectOutput(iOutput)
     }
 }
 
 
 button_event[dvTP, BUTTON_LEVEL] {
     push: {
-    stack_var integer iLevel
+        stack_var integer iLevel
 
-    iLevel = get_last(BUTTON_LEVEL)
+        iLevel = get_last(BUTTON_LEVEL)
 
-    SelectLevel(iLevel)
+        SelectLevel(iLevel)
     }
 }
+
 
 data_event[vdvObject] {
     string: {
-    stack_var char cCmdHeader[NAV_MAX_CHARS]
-    stack_var char cCmdParam[3][NAV_MAX_CHARS]
+        stack_var char cCmdHeader[NAV_MAX_CHARS]
+        stack_var char cCmdParam[3][NAV_MAX_CHARS]
 
-    NAVErrorLog(NAV_LOG_LEVEL_DEBUG, NAVFormatStandardLogMessage(NAV_STANDARD_LOG_MESSAGE_TYPE_STRING_FROM, data.device, data.text))
+        cCmdHeader = DuetParseCmdHeader(data.text)
+        cCmdParam[1]    = DuetParseCmdParam(data.text)
+        cCmdParam[2]    = DuetParseCmdParam(data.text)
+        cCmdParam[3]    = DuetParseCmdParam(data.text)
 
-    cCmdHeader = DuetParseCmdHeader(data.text)
-    cCmdParam[1]    = DuetParseCmdParam(data.text)
-    cCmdParam[2]    = DuetParseCmdParam(data.text)
-    cCmdParam[3]    = DuetParseCmdParam(data.text)
+        switch (cCmdHeader) {
+            case 'SWITCH': {
+                stack_var integer iLevel
+                stack_var integer iInput
+                stack_var integer iOutput
 
-    switch (cCmdHeader) {
-        case 'SWITCH': {
-        stack_var integer iLevel
-        stack_var integer iInput
-        stack_var integer iOutput
+                iLevel = NAVFindInArraySTRING(NAV_SWITCH_LEVELS, cCmdParam[3])
 
-        iLevel = NAVFindInArraySTRING(NAV_SWITCH_LEVELS, cCmdParam[3])
-
-        if (iLevel) {
-            iInput = atoi(cCmdParam[1])
-            iOutput = atoi(cCmdParam[2])
-            iCurrentInput[iLevel][iOutput] = iInput
+                if (iLevel) {
+                    iInput = atoi(cCmdParam[1])
+                    iOutput = atoi(cCmdParam[2])
+                    iCurrentInput[iLevel][iOutput] = iInput
+                    UpdateFeedback()
+                }
+            }
         }
-        }
-    }
     }
     command: {
-    stack_var char cCmdHeader[NAV_MAX_CHARS]
-    stack_var char cCmdParam[3][NAV_MAX_CHARS]
+        stack_var char cCmdHeader[NAV_MAX_CHARS]
+        stack_var char cCmdParam[3][NAV_MAX_CHARS]
 
-    NAVErrorLog(NAV_LOG_LEVEL_DEBUG, NAVFormatStandardLogMessage(NAV_STANDARD_LOG_MESSAGE_TYPE_COMMAND_FROM, data.device, data.text))
+        cCmdHeader = DuetParseCmdHeader(data.text)
+        cCmdParam[1]    = DuetParseCmdParam(data.text)
+        cCmdParam[2]    = DuetParseCmdParam(data.text)
+        cCmdParam[3]    = DuetParseCmdParam(data.text)
 
-    cCmdHeader = DuetParseCmdHeader(data.text)
-    cCmdParam[1]    = DuetParseCmdParam(data.text)
-    cCmdParam[2]    = DuetParseCmdParam(data.text)
-    cCmdParam[3]    = DuetParseCmdParam(data.text)
+        switch (cCmdHeader) {
+            case 'AUDIO_SWITCHING_BOARD': {
+                switch (cCmdParam[1]) {
+                    case 'INPUT': {
+                        switch (cCmdParam[3]) {
+                            case 'true': {
+                                iInputIsAudioSwicthingBoard[atoi(cCmdParam[2])] = true
+                            }
+                            case 'false': {
+                                iInputIsAudioSwicthingBoard[atoi(cCmdParam[2])] = false
+                            }
+                        }
+                    }
+                    case 'OUTPUT': {
+                        switch (cCmdParam[3]) {
+                            case 'true': {
+                                iOutputIsAudioSwicthingBoard[atoi(cCmdParam[2])] = true
+                            }
+                            case 'false': {
+                                iOutputIsAudioSwicthingBoard[atoi(cCmdParam[2])] = false
+                            }
+                        }
+                    }
+                }
 
-    switch (cCmdHeader) {
-        case 'AUDIO_SWITCHING_BOARD': {
-        switch (cCmdParam[1]) {
-            case 'INPUT': {
-            switch (cCmdParam[3]) {
-                case 'true': {
-                iInputIsAudioSwicthingBoard[atoi(cCmdParam[2])] = true
-                }
-                case 'false': {
-                iInputIsAudioSwicthingBoard[atoi(cCmdParam[2])] = false
-                }
+                EnableAudioIO(iSelectedLevel == NAV_SWITCH_LEVEL_AUD)
             }
-            }
-            case 'OUTPUT': {
-            switch (cCmdParam[3]) {
-                case 'true': {
-                iOutputIsAudioSwicthingBoard[atoi(cCmdParam[2])] = true
+            case 'LABEL': {
+                switch (cCmdParam[1]) {
+                    case 'INPUT': {
+                        cInputLabel[atoi(cCmdParam[2])] = cCmdParam[3]
+                    }
+                    case 'OUTPUT': {
+                        cOutputLabel[atoi(cCmdParam[2])] = cCmdParam[3]
+                    }
                 }
-                case 'false': {
-                iOutputIsAudioSwicthingBoard[atoi(cCmdParam[2])] = false
-                }
-            }
+
+                SendLabels()
             }
         }
-
-        EnableAudioIO(iSelectedLevel == NAV_SWITCH_LEVEL_AUD)
-        }
-        case 'LABEL': {
-        switch (cCmdParam[1]) {
-            case 'INPUT': {
-            cInputLabel[atoi(cCmdParam[2])] = cCmdParam[3]
-            }
-            case 'OUTPUT': {
-            cOutputLabel[atoi(cCmdParam[2])] = cCmdParam[3]
-            }
-        }
-
-        SendLabels()
-        }
-    }
     }
 }
 
 
-define_event data_event[dvTP] {
+data_event[dvTP] {
     online: {
-    SelectLevel(iSelectedLevel)
-    SendLabels()
-    EnableAudioIO(iSelectedLevel == NAV_SWITCH_LEVEL_AUD)
+        SelectLevel(iSelectedLevel)
+        SendLabels()
+        EnableAudioIO(iSelectedLevel == NAV_SWITCH_LEVEL_AUD)
     }
 }
+
 
 (***********************************************************)
 (*                     END OF PROGRAM                      *)
